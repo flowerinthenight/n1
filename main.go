@@ -8,6 +8,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"runtime"
@@ -142,6 +143,29 @@ func updateRunner(host string, file string) error {
 	return nil
 }
 
+func sendExecCommand(targetUrl string, cmd string) error {
+	client := &http.Client{}
+	data := url.Values{}
+	data.Add("cmd", cmd)
+	r, _ := http.NewRequest("POST", targetUrl, strings.NewReader(data.Encode()))
+	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := client.Do(r)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	traceln("Response status:", resp.Status)
+	resp_body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	traceln(string(resp_body))
+	return nil
+}
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "n1"
@@ -151,7 +175,7 @@ func main() {
 	app.Commands = []cli.Command{
 		{
 			Name:  "update",
-			Usage: "update scsws module(s)",
+			Usage: "update holly module(s)",
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "file",
@@ -195,6 +219,34 @@ func main() {
 					traceln("Not yet supported.")
 				}
 
+				return nil
+			},
+		},
+		{
+			Name:  "exec",
+			Usage: "remote execute command",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "cmd",
+					Value: "",
+					Usage: "`command` to execute",
+				},
+				cli.StringFlag{
+					Name:  "url",
+					Value: "",
+					Usage: "target `url`",
+				},
+			},
+			Action: func(c *cli.Context) error {
+				if c.IsSet("url") && c.IsSet("cmd") {
+					err := sendExecCommand(c.String("url"), c.String("cmd"))
+					if err != nil {
+						traceln(err)
+					}
+					return err
+				} else {
+					traceln("Flags 'url' and/or 'cmd' not set.")
+				}
 				return nil
 			},
 		},
