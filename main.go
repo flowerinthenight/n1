@@ -143,13 +143,46 @@ func updateRunner(host string, file string) error {
 	return nil
 }
 
-func sendExecCommand(targetUrl string, cmd string, outFile string) error {
+func sendExecCommand(host string, cmd string, outFile string) error {
 	var json = []byte(`{"cmd":"` + cmd + `"}`)
 	client := &http.Client{}
-	r, _ := http.NewRequest("POST", targetUrl, bytes.NewBuffer(json))
+	r, _ := http.NewRequest("POST", `http://`+host+`:8080/api/v1/exec`, bytes.NewBuffer(json))
 	r.Header.Add("Content-Type", "application/json")
 	resp, err := client.Do(r)
 	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	defer resp.Body.Close()
+	traceln("Response status:", resp.Status)
+	resp_body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	traceln(string(resp_body))
+	if outFile != "" {
+		err := ioutil.WriteFile(outFile, resp_body, 0644)
+		if err != nil {
+			traceln(err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func sendFileStats(host string, fileList string, outFile string) error {
+	// Use byte as payload to accommodate all sorts of file naming weirdness.
+	var payload = []byte(fileList)
+	client := &http.Client{}
+	r, _ := http.NewRequest("GET", `http://`+host+`:8080/api/v1/filestat`, bytes.NewBuffer(payload))
+	r.Header.Add("Content-Type", "application/octet-stream")
+	resp, err := client.Do(r)
+	if err != nil {
+		traceln(err)
 		return err
 	}
 
@@ -239,9 +272,9 @@ func main() {
 					Usage: "`command` to execute",
 				},
 				cli.StringFlag{
-					Name:  "url",
-					Value: "",
-					Usage: "target `url`",
+					Name:  "host",
+					Value: "localhost",
+					Usage: "target `host`",
 				},
 				cli.StringFlag{
 					Name:  "out",
@@ -250,16 +283,43 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				if c.IsSet("url") && c.IsSet("cmd") {
-					err := sendExecCommand(c.String("url"), c.String("cmd"), c.String("out"))
-					if err != nil {
-						traceln(err)
-					}
-					return err
-				} else {
-					traceln("Flags 'url' and/or 'cmd' not set.")
+				if !c.IsSet("cmd") {
+					traceln("Flag 'cmd' not set.")
+					return nil
 				}
-				return nil
+
+				// Todo: support list of hosts as target.
+				return sendExecCommand(c.String("host"), c.String("cmd"), c.String("out"))
+			},
+		},
+		{
+			Name:  "stat",
+			Usage: "get file stats",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "files",
+					Value: "",
+					Usage: "comma-separated file list",
+				},
+				cli.StringFlag{
+					Name:  "host",
+					Value: "localhost",
+					Usage: "target `host`",
+				},
+				cli.StringFlag{
+					Name:  "out",
+					Value: "",
+					Usage: "write output to `file`",
+				},
+			},
+			Action: func(c *cli.Context) error {
+				if !c.IsSet("files") {
+					traceln("Flag 'files' not set.")
+					return fmt.Errorf("Flag 'files' not set.")
+				}
+
+				// Todo: support list of hosts as target.
+				return sendFileStats(c.String("host"), c.String("files"), c.String("out"))
 			},
 		},
 	}
