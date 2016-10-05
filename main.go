@@ -8,7 +8,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"net/url"
+	// "net/url"
 	"os"
 	"regexp"
 	"runtime"
@@ -143,12 +143,11 @@ func updateRunner(host string, file string) error {
 	return nil
 }
 
-func sendExecCommand(targetUrl string, cmd string) error {
+func sendExecCommand(targetUrl string, cmd string, outFile string) error {
+	var json = []byte(`{"cmd":"` + cmd + `"}`)
 	client := &http.Client{}
-	data := url.Values{}
-	data.Add("cmd", cmd)
-	r, _ := http.NewRequest("POST", targetUrl, strings.NewReader(data.Encode()))
-	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	r, _ := http.NewRequest("POST", targetUrl, bytes.NewBuffer(json))
+	r.Header.Add("Content-Type", "application/json")
 	resp, err := client.Do(r)
 	if err != nil {
 		return err
@@ -163,6 +162,14 @@ func sendExecCommand(targetUrl string, cmd string) error {
 	}
 
 	traceln(string(resp_body))
+	if outFile != "" {
+		err := ioutil.WriteFile(outFile, resp_body, 0644)
+		if err != nil {
+			traceln(err)
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -236,10 +243,15 @@ func main() {
 					Value: "",
 					Usage: "target `url`",
 				},
+				cli.StringFlag{
+					Name:  "out",
+					Value: "",
+					Usage: "write output to `file`",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if c.IsSet("url") && c.IsSet("cmd") {
-					err := sendExecCommand(c.String("url"), c.String("cmd"))
+					err := sendExecCommand(c.String("url"), c.String("cmd"), c.String("out"))
 					if err != nil {
 						traceln(err)
 					}
