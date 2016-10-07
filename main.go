@@ -8,7 +8,6 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	// "net/url"
 	"os"
 	"regexp"
 	"runtime"
@@ -205,29 +204,40 @@ func sendExecCommand(host string, cmd string, outFile string) error {
 	return nil
 }
 
-func sendFileStats(host string, fileList string, outFile string) error {
+func sendGetOctetStream(url string, file string) ([]byte, string, error) {
 	// Use byte as payload to accommodate all sorts of file naming weirdness.
-	var payload = []byte(fileList)
+	var payload = []byte(file)
 	client := &http.Client{}
-	r, _ := http.NewRequest("GET", `http://`+host+`:8080/api/v1/filestat`, bytes.NewBuffer(payload))
+	r, _ := http.NewRequest("GET", url, bytes.NewBuffer(payload))
 	r.Header.Add("Content-Type", "application/octet-stream")
 	resp, err := client.Do(r)
 	if err != nil {
 		traceln(err)
-		return err
+		return nil, "", err
 	}
 
 	defer resp.Body.Close()
-	traceln("Response status:", resp.Status)
-	resp_body, err := ioutil.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		traceln(err)
+		return nil, "", err
+	}
+
+	return body, resp.Status, nil
+}
+
+func sendFileStats(host string, fileList string, outFile string) error {
+	url := `http://` + host + `:8080/api/v1/filestat`
+	body, status, err := sendGetOctetStream(url, fileList)
 	if err != nil {
 		traceln(err)
 		return err
 	}
 
-	traceln(string(resp_body))
+	traceln(status)
+	traceln(string(body))
 	if outFile != "" {
-		err := ioutil.WriteFile(outFile, resp_body, 0644)
+		err := ioutil.WriteFile(outFile, body, 0644)
 		if err != nil {
 			traceln(err)
 			return err
@@ -238,25 +248,14 @@ func sendFileStats(host string, fileList string, outFile string) error {
 }
 
 func sendReadFile(host string, file string, outFile string) error {
-	// Use byte as payload to accommodate all sorts of file naming weirdness.
-	var payload = []byte(file)
-	client := &http.Client{}
-	r, _ := http.NewRequest("GET", `http://`+host+`:8080/api/v1/readfile`, bytes.NewBuffer(payload))
-	r.Header.Add("Content-Type", "application/octet-stream")
-	resp, err := client.Do(r)
+	url := `http://` + host + `:8080/api/v1/readfile`
+	body, status, err := sendGetOctetStream(url, file)
 	if err != nil {
 		traceln(err)
 		return err
 	}
 
-	defer resp.Body.Close()
-	traceln("Response status:", resp.Status)
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
+	traceln(status)
 	traceln(string(body))
 	if outFile != "" {
 		err := ioutil.WriteFile(outFile, body, 0644)
