@@ -88,6 +88,40 @@ func updateService(host string, file string, reboot bool) error {
 	return nil
 }
 
+func uploadFileToEndpoint(url string, file string) ([]byte, string, error) {
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+	fileWriter, err := bodyWriter.CreateFormFile("uploadfile", file)
+	if err != nil {
+		traceln(err)
+		return nil, "", err
+	}
+
+	fh, err := os.Open(file)
+	if err != nil {
+		traceln(err)
+		return nil, "", err
+	}
+
+	_, err = io.Copy(fileWriter, fh)
+	if err != nil {
+		traceln(err)
+		return nil, "", err
+	}
+
+	contentType := bodyWriter.FormDataContentType()
+	bodyWriter.Close()
+	resp, err := http.Post(url, contentType, bodyBuf)
+	if err != nil {
+		traceln(err)
+		return nil, "", err
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	return body, resp.Status, err
+}
+
 func updateRunner(host string, file string) error {
 	if file == "" {
 		err := fmt.Errorf("No file provided. See --file flag for more info.")
@@ -101,45 +135,42 @@ func updateRunner(host string, file string) error {
 		return err
 	}
 
-	bodyBuf := &bytes.Buffer{}
-	bodyWriter := multipart.NewWriter(bodyBuf)
-	fileWriter, err := bodyWriter.CreateFormFile("uploadfile", file)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	fh, err := os.Open(file)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	_, err = io.Copy(fileWriter, fh)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	contentType := bodyWriter.FormDataContentType()
-	bodyWriter.Close()
 	url := `http://` + host + `:8080/api/v1/update/runner`
-	resp, err := http.Post(url, contentType, bodyBuf)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	defer resp.Body.Close()
-	resp_body, err := ioutil.ReadAll(resp.Body)
+	body, status, err := uploadFileToEndpoint(url, file)
 	if err != nil {
 		traceln(err)
 		return err
 	}
 
 	traceln("[" + host + "]")
-	traceln(resp.Status)
-	traceln(string(resp_body))
+	traceln(status)
+	traceln(string(body))
+	return nil
+}
+
+func updateConf(host string, file string) error {
+	if file == "" {
+		err := fmt.Errorf("No file provided. See --file flag for more info.")
+		traceln(err)
+		return err
+	}
+
+	if host == "" {
+		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
+		traceln(err)
+		return err
+	}
+
+	url := `http://` + host + `:8080/api/v1/update/conf`
+	body, status, err := uploadFileToEndpoint(url, file)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	traceln("[" + host + "]")
+	traceln(status)
+	traceln(string(body))
 	return nil
 }
 
@@ -206,6 +237,38 @@ func sendFileStats(host string, fileList string, outFile string) error {
 	return nil
 }
 
+func sendReadFile(host string, file string, outFile string) error {
+	// Use byte as payload to accommodate all sorts of file naming weirdness.
+	var payload = []byte(file)
+	client := &http.Client{}
+	r, _ := http.NewRequest("GET", `http://`+host+`:8080/api/v1/readfile`, bytes.NewBuffer(payload))
+	r.Header.Add("Content-Type", "application/octet-stream")
+	resp, err := client.Do(r)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	defer resp.Body.Close()
+	traceln("Response status:", resp.Status)
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	traceln(string(body))
+	if outFile != "" {
+		err := ioutil.WriteFile(outFile, body, 0644)
+		if err != nil {
+			traceln(err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "n1"
@@ -232,7 +295,7 @@ func main() {
 					Usage: "should reboot after update (default: true)",
 				},
 			},
-			ArgsUsage: "[self|runner]",
+			ArgsUsage: "[self|runner|conf]",
 			Action: func(c *cli.Context) error {
 				if c.NArg() > 0 {
 					switch c.Args().Get(0) {
@@ -250,6 +313,11 @@ func main() {
 						hosts := strings.Split(c.String("hosts"), ",")
 						for _, host := range hosts {
 							updateRunner(host, c.String("file"))
+						}
+					case "conf":
+						hosts := strings.Split(c.String("hosts"), ",")
+						for _, host := range hosts {
+							updateConf(host, c.String("file"))
 						}
 					default:
 						traceln("Valid argument is either 'self' or 'runner' or none.")
@@ -320,6 +388,36 @@ func main() {
 
 				// Todo: support list of hosts as target.
 				return sendFileStats(c.String("host"), c.String("files"), c.String("out"))
+			},
+		},
+		{
+			Name:  "read",
+			Usage: "read a file",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "file",
+					Value: "",
+					Usage: "file to read",
+				},
+				cli.StringFlag{
+					Name:  "host",
+					Value: "localhost",
+					Usage: "target `host`",
+				},
+				cli.StringFlag{
+					Name:  "out",
+					Value: "",
+					Usage: "write output to `file`",
+				},
+			},
+			Action: func(c *cli.Context) error {
+				if !c.IsSet("file") {
+					traceln("Flag 'file' not set.")
+					return fmt.Errorf("Flag 'file' not set.")
+				}
+
+				// Todo: support list of hosts as target.
+				return sendReadFile(c.String("host"), c.String("file"), c.String("out"))
 			},
 		},
 	}
