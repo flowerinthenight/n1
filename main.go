@@ -173,40 +173,9 @@ func updateConf(host string, file string) error {
 	return nil
 }
 
-func sendExecCommand(host string, cmd string, outFile string) error {
-	var json = []byte(`{"cmd":"` + cmd + `"}`)
-	client := &http.Client{}
-	r, _ := http.NewRequest("POST", `http://`+host+`:8080/api/v1/exec`, bytes.NewBuffer(json))
-	r.Header.Add("Content-Type", "application/json")
-	resp, err := client.Do(r)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	defer resp.Body.Close()
-	traceln("Response status:", resp.Status)
-	resp_body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	traceln(string(resp_body))
-	if outFile != "" {
-		err := ioutil.WriteFile(outFile, resp_body, 0644)
-		if err != nil {
-			traceln(err)
-			return err
-		}
-	}
-
-	return nil
-}
-
-func sendGetOctetStream(url string, file string) ([]byte, string, error) {
+func sendGetOctetStream(url string, data string) ([]byte, string, error) {
 	// Use byte as payload to accommodate all sorts of file naming weirdness.
-	var payload = []byte(file)
+	var payload = []byte(data)
 	client := &http.Client{}
 	r, _ := http.NewRequest("GET", url, bytes.NewBuffer(payload))
 	r.Header.Add("Content-Type", "application/octet-stream")
@@ -224,6 +193,27 @@ func sendGetOctetStream(url string, file string) ([]byte, string, error) {
 	}
 
 	return body, resp.Status, nil
+}
+
+func sendExecCommand(host string, cmd string, outFile string) error {
+	url := `http://` + host + `:8080/api/v1/exec`
+	body, status, err := sendGetOctetStream(url, cmd)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	traceln(status)
+	traceln(string(body))
+	if outFile != "" {
+		err := ioutil.WriteFile(outFile, body, 0644)
+		if err != nil {
+			traceln(err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func sendFileStats(host string, fileList string, outFile string) error {
