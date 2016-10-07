@@ -419,6 +419,37 @@ func main() {
 				return sendReadFile(c.String("host"), c.String("file"), c.String("out"))
 			},
 		},
+		{
+			Name:  "version",
+			Usage: "get 'holly' version",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "host",
+					Value: "localhost",
+					Usage: "target `host`",
+				},
+			},
+			Action: func(c *cli.Context) error {
+				client := &http.Client{}
+				r, _ := http.NewRequest("GET", `http://`+c.String("host")+`:8080/api/v1/version`, nil)
+				resp, err := client.Do(r)
+				if err != nil {
+					traceln(err)
+					return err
+				}
+
+				defer resp.Body.Close()
+				body, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					traceln(err)
+					return err
+				}
+
+				traceln(resp.Status)
+				traceln(string(body))
+				return nil
+			},
+		},
 	}
 
 	app.Run(os.Args)
