@@ -173,6 +173,72 @@ func updateConf(host string, file string) error {
 	return nil
 }
 
+func uploadFile(host string, file string, path string) error {
+	if file == "" {
+		err := fmt.Errorf("No file provided. See --file flag for more info.")
+		traceln(err)
+		return err
+	}
+
+	if host == "" {
+		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
+		traceln(err)
+		return err
+	}
+
+	url := `http://` + host + `:8080/api/v1/upload`
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+	fileWriter, err := bodyWriter.CreateFormFile("uploadfile", file)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	fh, err := os.Open(file)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	_, err = io.Copy(fileWriter, fh)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	loc, err := bodyWriter.CreateFormField("path")
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	_, err = loc.Write([]byte(path))
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	contentType := bodyWriter.FormDataContentType()
+	bodyWriter.Close()
+	resp, err := http.Post(url, contentType, bodyBuf)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	str := fmt.Sprintf("%s", body)
+	traceln(str)
+	return nil
+}
+
 func sendGetOctetStream(url string, data string) ([]byte, string, error) {
 	// Use byte as payload to accommodate all sorts of file naming weirdness.
 	var payload = []byte(data)
@@ -317,6 +383,36 @@ func main() {
 				}
 
 				return nil
+			},
+		},
+		{
+			Name:  "upload",
+			Usage: "update file to 'holly'",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "file",
+					Value: "",
+					Usage: "new `file` to upload",
+				},
+				cli.StringFlag{
+					Name:  "path",
+					Value: "root",
+					Usage: "file destination path",
+				},
+				cli.StringFlag{
+					Name:  "host",
+					Value: "localhost",
+					Usage: "upload destination host",
+				},
+			},
+			Action: func(c *cli.Context) error {
+				if !c.IsSet("file") {
+					traceln("Flag 'file' not set.")
+					return nil
+				}
+
+				// Todo: support list of hosts as target, and list of file-path pairs.
+				return uploadFile(c.String("host"), c.String("file"), c.String("path"))
 			},
 		},
 		{
