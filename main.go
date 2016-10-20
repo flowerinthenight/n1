@@ -261,8 +261,19 @@ func sendGetOctetStream(url string, data string) ([]byte, string, error) {
 	return body, resp.Status, nil
 }
 
-func sendExecCommand(host string, cmd string, outFile string) error {
+func sendExecCommand(host, cmd, outFile string, interactive, wait bool, waitms int) error {
 	url := `http://` + host + `:8080/api/v1/exec`
+	if interactive {
+		url = url + `?interactive=true`
+		shouldWait := "true"
+		if !wait {
+			shouldWait = "false"
+		}
+
+		url = url + `&wait=` + shouldWait
+		url = url + `&waitms=` + fmt.Sprintf("%d", waitms)
+	}
+
 	body, status, err := sendGetOctetStream(url, cmd)
 	if err != nil {
 		traceln(err)
@@ -434,6 +445,19 @@ func main() {
 					Value: "",
 					Usage: "write output to `file`",
 				},
+				cli.BoolFlag{
+					Name:  "interactive",
+					Usage: "run as interactive (default: false)",
+				},
+				cli.BoolFlag{
+					Name:  "wait",
+					Usage: "wait for cmd to exit (default: true)",
+				},
+				cli.IntFlag{
+					Name:  "waitms",
+					Value: 5000,
+					Usage: "wait `timeout` in ms",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if !c.IsSet("cmd") {
@@ -441,8 +465,18 @@ func main() {
 					return nil
 				}
 
+				interactive := false
+				wait := true
+				if c.IsSet("interactive") {
+					interactive = c.Bool("interactive")
+				}
+
+				if c.IsSet("wait") {
+					wait = c.Bool("wait")
+				}
+
 				// Todo: support list of hosts as target.
-				return sendExecCommand(c.String("host"), c.String("cmd"), c.String("out"))
+				return sendExecCommand(c.String("host"), c.String("cmd"), c.String("out"), interactive, wait, c.Int("waitms"))
 			},
 		},
 		{
