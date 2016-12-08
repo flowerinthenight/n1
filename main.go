@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -335,16 +336,76 @@ func sendReadFile(host string, file string, outFile string) error {
 	return nil
 }
 
+func downloadRunner(targetDir string, fileUrl string) error {
+	if targetDir == "" {
+		traceln("Please provide a target directory.")
+		return nil
+	}
+
+	url := fileUrl
+	if url == "" {
+		// Default to 64bit runner.
+		url = `https://gitlab-ci-multi-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-ci-multi-runner-windows-amd64.exe`
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	_, f := filepath.Split(url)
+	if len(f) == 0 {
+		traceln("Cannot determine filename from url.")
+		return nil
+	}
+
+	fp := targetDir + `\` + f
+	traceln("target:", fp)
+	out, err := os.Create(fp)
+	if err != nil {
+		return err
+	}
+
+	// Writer the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	defer out.Close()
+	return nil
+}
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "n1"
-	app.Usage = "Client interface for `holly` service."
+	app.Usage = "Client interface for 'holly' service."
 	app.Version = internalVersion
 	app.Copyright = "(c) 2016 Chew Esmero."
 	app.Commands = []cli.Command{
 		{
+			Name:  "runner",
+			Usage: "download gitlab runner",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "dir",
+					Value: "",
+					Usage: "target directory",
+				},
+				cli.StringFlag{
+					Name:  "url",
+					Value: "",
+					Usage: "file url to download (default: 64bit runner)",
+				},
+			},
+			Action: func(c *cli.Context) error {
+				return downloadRunner(c.String("dir"), c.String("url"))
+			},
+		},
+		{
 			Name:  "update",
-			Usage: "update holly module(s)",
+			Usage: "update 'holly' module(s)",
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "file",
