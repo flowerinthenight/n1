@@ -17,7 +17,12 @@ import (
 	"github.com/urfave/cli"
 )
 
-const internalVersion = "1.0"
+const (
+	name            = "n1"
+	internalVersion = "1.0"
+	usage           = "Client interface for 'holly' service."
+	copyright       = "(c) 2016 Chew Esmero."
+)
 
 func traceln(v ...interface{}) {
 	pc, _, _, _ := runtime.Caller(1)
@@ -28,90 +33,15 @@ func traceln(v ...interface{}) {
 	log.Print("["+fnName+"] ", m)
 }
 
-func updateService(host string, file string, reboot bool) error {
-	if file == "" {
-		err := fmt.Errorf("No file provided. See --file flag for more info.")
-		traceln(err)
-		return err
-	}
-
-	if host == "" {
-		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
-		traceln(err)
-		return err
-	}
-
-	bodyBuf := &bytes.Buffer{}
-	bodyWriter := multipart.NewWriter(bodyBuf)
-	fileWriter, err := bodyWriter.CreateFormFile("uploadfile", file)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	fh, err := os.Open(file)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	_, err = io.Copy(fileWriter, fh)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	contentType := bodyWriter.FormDataContentType()
-	bodyWriter.Close()
-	url := `http://` + host + `:8080/api/v1/update/self`
-	if !reboot {
-		url = url + `?reboot=false`
-	}
-
-	resp, err := http.Post(url, contentType, bodyBuf)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	defer resp.Body.Close()
-	resp_body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	traceln("[" + host + "]")
-	traceln(resp.Status)
-	traceln(string(resp_body))
-
-	return nil
-}
-
-func uploadFileToEndpoint(url string, file string) ([]byte, string, error) {
-	bodyBuf := &bytes.Buffer{}
-	bodyWriter := multipart.NewWriter(bodyBuf)
-	fileWriter, err := bodyWriter.CreateFormFile("uploadfile", file)
-	if err != nil {
-		traceln(err)
-		return nil, "", err
-	}
-
-	fh, err := os.Open(file)
-	if err != nil {
-		traceln(err)
-		return nil, "", err
-	}
-
-	_, err = io.Copy(fileWriter, fh)
-	if err != nil {
-		traceln(err)
-		return nil, "", err
-	}
-
-	contentType := bodyWriter.FormDataContentType()
-	bodyWriter.Close()
-	resp, err := http.Post(url, contentType, bodyBuf)
+// Use http methods for the 'method' argument.
+// Returns the body, response status, and error.
+func httpOctetStream(method, url, data string) ([]byte, string, error) {
+	// Use byte as payload to accommodate all sorts of file naming weirdness.
+	var payload = []byte(data)
+	client := &http.Client{}
+	r, _ := http.NewRequest(method, url, bytes.NewBuffer(payload))
+	r.Header.Add("Content-Type", "application/octet-stream")
+	resp, err := client.Do(r)
 	if err != nil {
 		traceln(err)
 		return nil, "", err
@@ -119,70 +49,60 @@ func uploadFileToEndpoint(url string, file string) ([]byte, string, error) {
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		traceln(err)
+		return nil, "", err
+	}
+
+	return body, resp.Status, nil
+}
+
+// Returns the body, response status, and error.
+func uploadFileToEndpoint(url string, file string) ([]byte, string, error) {
+	bodyBuf := &bytes.Buffer{}
+	var rs string
+	bodyWriter := multipart.NewWriter(bodyBuf)
+	fileWriter, err := bodyWriter.CreateFormFile("uploadfile", file)
+	if err != nil {
+		traceln(err)
+		return nil, rs, err
+	}
+
+	fh, err := os.Open(file)
+	if err != nil {
+		traceln(err)
+		return nil, rs, err
+	}
+
+	_, err = io.Copy(fileWriter, fh)
+	if err != nil {
+		traceln(err)
+		return nil, rs, err
+	}
+
+	contentType := bodyWriter.FormDataContentType()
+	bodyWriter.Close()
+	resp, err := http.Post(url, contentType, bodyBuf)
+	if err != nil {
+		traceln(err)
+		return nil, rs, err
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
 	return body, resp.Status, err
 }
 
-func updateRunner(host string, file string) error {
-	if file == "" {
-		err := fmt.Errorf("No file provided. See --file flag for more info.")
-		traceln(err)
-		return err
-	}
-
+// Upload some file to some location (generic upload).
+func uploadFileGeneric(host string, file string, path string) error {
 	if host == "" {
 		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
 		traceln(err)
 		return err
 	}
 
-	url := `http://` + host + `:8080/api/v1/update/runner`
-	body, status, err := uploadFileToEndpoint(url, file)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	traceln("[" + host + "]")
-	traceln(status)
-	traceln(string(body))
-	return nil
-}
-
-func updateConf(host string, file string) error {
 	if file == "" {
 		err := fmt.Errorf("No file provided. See --file flag for more info.")
-		traceln(err)
-		return err
-	}
-
-	if host == "" {
-		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
-		traceln(err)
-		return err
-	}
-
-	url := `http://` + host + `:8080/api/v1/update/conf`
-	body, status, err := uploadFileToEndpoint(url, file)
-	if err != nil {
-		traceln(err)
-		return err
-	}
-
-	traceln("[" + host + "]")
-	traceln(status)
-	traceln(string(body))
-	return nil
-}
-
-func uploadFile(host string, file string, path string) error {
-	if file == "" {
-		err := fmt.Errorf("No file provided. See --file flag for more info.")
-		traceln(err)
-		return err
-	}
-
-	if host == "" {
-		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
 		traceln(err)
 		return err
 	}
@@ -240,26 +160,94 @@ func uploadFile(host string, file string, path string) error {
 	return nil
 }
 
-func sendGetOctetStream(url string, data string) ([]byte, string, error) {
-	// Use byte as payload to accommodate all sorts of file naming weirdness.
-	var payload = []byte(data)
-	client := &http.Client{}
-	r, _ := http.NewRequest("GET", url, bytes.NewBuffer(payload))
-	r.Header.Add("Content-Type", "application/octet-stream")
-	resp, err := client.Do(r)
-	if err != nil {
+func updateService(host string, file string, reboot bool) error {
+	if host == "" {
+		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
 		traceln(err)
-		return nil, "", err
+		return err
 	}
 
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
+	if file == "" {
+		err := fmt.Errorf("No file provided. See --file flag for more info.")
 		traceln(err)
-		return nil, "", err
+		return err
 	}
 
-	return body, resp.Status, nil
+	url := `http://` + host + `:8080/api/v1/update/self`
+	if !reboot {
+		// We reboot the target system by default.
+		url = url + `?reboot=false`
+	}
+
+	body, status, err := uploadFileToEndpoint(url, file)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	traceln("[" + host + "]")
+	traceln(status)
+	traceln(string(body))
+	return nil
+}
+
+func updateRunner(host string, file string) error {
+	if host == "" {
+		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
+		traceln(err)
+		return err
+	}
+
+	upfile := file
+	if file == "" {
+		// If no file provided, we download the runner to tempdir.
+		traceln("tempdir:", os.TempDir())
+		f, err := downloadRunner(os.TempDir(), "")
+		if err != nil {
+			traceln(err)
+			return err
+		}
+
+		upfile = os.TempDir() + `\` + f
+	}
+
+	url := `http://` + host + `:8080/api/v1/update/runner`
+	body, status, err := uploadFileToEndpoint(url, upfile)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	traceln("[" + host + "]")
+	traceln(status)
+	traceln(string(body))
+	return nil
+}
+
+func updateConf(host string, file string) error {
+	if host == "" {
+		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
+		traceln(err)
+		return err
+	}
+
+	if file == "" {
+		err := fmt.Errorf("No file provided. See --file flag for more info.")
+		traceln(err)
+		return err
+	}
+
+	url := `http://` + host + `:8080/api/v1/update/conf`
+	body, status, err := uploadFileToEndpoint(url, file)
+	if err != nil {
+		traceln(err)
+		return err
+	}
+
+	traceln("[" + host + "]")
+	traceln(status)
+	traceln(string(body))
+	return nil
 }
 
 func sendExecCommand(host, cmd, outFile string, interactive, wait bool, waitms int) error {
@@ -275,7 +263,7 @@ func sendExecCommand(host, cmd, outFile string, interactive, wait bool, waitms i
 		url = url + `&waitms=` + fmt.Sprintf("%d", waitms)
 	}
 
-	body, status, err := sendGetOctetStream(url, cmd)
+	body, status, err := httpOctetStream("GET", url, cmd)
 	if err != nil {
 		traceln(err)
 		return err
@@ -296,7 +284,7 @@ func sendExecCommand(host, cmd, outFile string, interactive, wait bool, waitms i
 
 func sendFileStats(host string, fileList string, outFile string) error {
 	url := `http://` + host + `:8080/api/v1/filestat`
-	body, status, err := sendGetOctetStream(url, fileList)
+	body, status, err := httpOctetStream("GET", url, fileList)
 	if err != nil {
 		traceln(err)
 		return err
@@ -317,7 +305,7 @@ func sendFileStats(host string, fileList string, outFile string) error {
 
 func sendReadFile(host string, file string, outFile string) error {
 	url := `http://` + host + `:8080/api/v1/readfile`
-	body, status, err := sendGetOctetStream(url, file)
+	body, status, err := httpOctetStream("GET", url, file)
 	if err != nil {
 		traceln(err)
 		return err
@@ -336,10 +324,11 @@ func sendReadFile(host string, file string, outFile string) error {
 	return nil
 }
 
-func downloadRunner(targetDir string, fileUrl string) error {
+// Returns the filename when download succeeds.
+func downloadRunner(targetDir string, fileUrl string) (string, error) {
 	if targetDir == "" {
 		traceln("Please provide a target directory.")
-		return nil
+		return "", nil
 	}
 
 	url := fileUrl
@@ -350,39 +339,38 @@ func downloadRunner(targetDir string, fileUrl string) error {
 
 	resp, err := http.Get(url)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	defer resp.Body.Close()
 	_, f := filepath.Split(url)
 	if len(f) == 0 {
 		traceln("Cannot determine filename from url.")
-		return nil
+		return "", nil
 	}
 
 	fp := targetDir + `\` + f
 	traceln("target:", fp)
 	out, err := os.Create(fp)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// Writer the body to file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	defer out.Close()
-	return nil
+	return f, nil
 }
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "n1"
-	app.Usage = "Client interface for 'holly' service."
+	app.Name = name
+	app.Usage = usage
 	app.Version = internalVersion
-	app.Copyright = "(c) 2016 Chew Esmero."
+	app.Copyright = copyright
 	app.Commands = []cli.Command{
 		{
 			Name:  "runner",
@@ -400,7 +388,8 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				return downloadRunner(c.String("dir"), c.String("url"))
+				_, err := downloadRunner(c.String("dir"), c.String("url"))
+				return err
 			},
 		},
 		{
@@ -410,7 +399,7 @@ func main() {
 				cli.StringFlag{
 					Name:  "file",
 					Value: "",
-					Usage: "new `file` to upload",
+					Usage: "`file` to upload ([runner] option: download latest x64 when empty)",
 				},
 				cli.StringFlag{
 					Name:  "hosts",
@@ -419,7 +408,7 @@ func main() {
 				},
 				cli.BoolFlag{
 					Name:  "reboot",
-					Usage: "should reboot after update (default: true)",
+					Usage: "should reboot after update (default: true for [self] option)",
 				},
 			},
 			ArgsUsage: "[self|runner|conf]",
@@ -484,7 +473,7 @@ func main() {
 				}
 
 				// Todo: support list of hosts as target, and list of file-path pairs.
-				return uploadFile(c.String("host"), c.String("file"), c.String("path"))
+				return uploadFileGeneric(c.String("host"), c.String("file"), c.String("path"))
 			},
 		},
 		{
