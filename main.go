@@ -160,7 +160,7 @@ func uploadFileGeneric(host string, file string, path string) error {
 	return nil
 }
 
-func updateService(host string, file string, reboot bool) error {
+func httpSendUpdateService(host string, file string, reboot bool) error {
 	if host == "" {
 		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
 		traceln(err)
@@ -179,6 +179,7 @@ func updateService(host string, file string, reboot bool) error {
 		url = url + `?reboot=false`
 	}
 
+	traceln("Start uploading " + file + " to " + url + ".")
 	body, status, err := uploadFileToEndpoint(url, file)
 	if err != nil {
 		traceln(err)
@@ -191,7 +192,7 @@ func updateService(host string, file string, reboot bool) error {
 	return nil
 }
 
-func updateRunner(host string, file string) error {
+func httpSendUpdateRunner(host string, file string) error {
 	if host == "" {
 		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
 		traceln(err)
@@ -201,7 +202,7 @@ func updateRunner(host string, file string) error {
 	upfile := file
 	if file == "" {
 		// If no file provided, we download the runner to tempdir.
-		traceln("tempdir:", os.TempDir())
+		traceln("Download latest runner to tempdir:", os.TempDir())
 		f, err := downloadRunner(os.TempDir(), "")
 		if err != nil {
 			traceln(err)
@@ -212,6 +213,7 @@ func updateRunner(host string, file string) error {
 	}
 
 	url := `http://` + host + `:8080/api/v1/update/runner`
+	traceln("Start uploading " + upfile + " to " + url + ".")
 	body, status, err := uploadFileToEndpoint(url, upfile)
 	if err != nil {
 		traceln(err)
@@ -224,7 +226,7 @@ func updateRunner(host string, file string) error {
 	return nil
 }
 
-func updateConf(host string, file string) error {
+func httpSendUpdateConf(host string, file string) error {
 	if host == "" {
 		err := fmt.Errorf("No host/ip provided. See --hosts flag for more info.")
 		traceln(err)
@@ -238,6 +240,7 @@ func updateConf(host string, file string) error {
 	}
 
 	url := `http://` + host + `:8080/api/v1/update/conf`
+	traceln("Start uploading " + file + " to " + url + ".")
 	body, status, err := uploadFileToEndpoint(url, file)
 	if err != nil {
 		traceln(err)
@@ -250,7 +253,7 @@ func updateConf(host string, file string) error {
 	return nil
 }
 
-func sendExecCommand(host, cmd, outFile string, interactive, wait bool, waitms int) error {
+func httpSendExecCmd(host, cmd, outFile string, interactive, wait bool, waitms int) error {
 	url := `http://` + host + `:8080/api/v1/exec`
 	if interactive {
 		url = url + `?interactive=true`
@@ -282,7 +285,7 @@ func sendExecCommand(host, cmd, outFile string, interactive, wait bool, waitms i
 	return nil
 }
 
-func sendFileStats(host string, fileList string, outFile string) error {
+func httpGetFileStats(host string, fileList string, outFile string) error {
 	url := `http://` + host + `:8080/api/v1/filestat`
 	body, status, err := httpOctetStream("GET", url, fileList)
 	if err != nil {
@@ -303,7 +306,7 @@ func sendFileStats(host string, fileList string, outFile string) error {
 	return nil
 }
 
-func sendReadFile(host string, file string, outFile string) error {
+func httpReadFile(host string, file string, outFile string) error {
 	url := `http://` + host + `:8080/api/v1/readfile`
 	body, status, err := httpOctetStream("GET", url, file)
 	if err != nil {
@@ -423,24 +426,27 @@ func main() {
 								reboot = false
 							}
 
-							updateService(host, c.String("file"), reboot)
+							traceln("Start update service request for " + host + ".")
+							httpSendUpdateService(host, c.String("file"), reboot)
 						}
 					case "runner":
 						hosts := strings.Split(c.String("hosts"), ",")
 						for _, host := range hosts {
-							updateRunner(host, c.String("file"))
+							traceln("Start update runner request for " + host + ".")
+							httpSendUpdateRunner(host, c.String("file"))
 						}
 					case "conf":
 						hosts := strings.Split(c.String("hosts"), ",")
 						for _, host := range hosts {
-							updateConf(host, c.String("file"))
+							traceln("Start update config request for " + host + ".")
+							httpSendUpdateConf(host, c.String("file"))
 						}
 					default:
 						traceln("Valid argument is either 'self' or 'runner' or none.")
 						return nil
 					}
 				} else {
-					traceln("Not yet supported.")
+					traceln("No arguments provided.")
 				}
 
 				return nil
@@ -526,7 +532,7 @@ func main() {
 				}
 
 				// Todo: support list of hosts as target.
-				return sendExecCommand(c.String("host"), c.String("cmd"), c.String("out"), interactive, wait, c.Int("waitms"))
+				return httpSendExecCmd(c.String("host"), c.String("cmd"), c.String("out"), interactive, wait, c.Int("waitms"))
 			},
 		},
 		{
@@ -556,7 +562,7 @@ func main() {
 				}
 
 				// Todo: support list of hosts as target.
-				return sendFileStats(c.String("host"), c.String("files"), c.String("out"))
+				return httpGetFileStats(c.String("host"), c.String("files"), c.String("out"))
 			},
 		},
 		{
@@ -586,7 +592,7 @@ func main() {
 				}
 
 				// Todo: support list of hosts as target.
-				return sendReadFile(c.String("host"), c.String("file"), c.String("out"))
+				return httpReadFile(c.String("host"), c.String("file"), c.String("out"))
 			},
 		},
 		{
