@@ -431,9 +431,23 @@ func main() {
 						}
 					case "runner":
 						hosts := strings.Split(c.String("hosts"), ",")
+						file := c.String("file")
+						// If no file provided, we download the runner to tempdir. We are running
+						// as service so most likely, in c:\windows\temp folder.
+						if file == "" {
+							traceln("Download latest runner to tempdir:", os.TempDir())
+							f, err := downloadRunner(os.TempDir(), "")
+							if err != nil {
+								traceln(err)
+								return err
+							}
+
+							file = os.TempDir() + `\` + f
+						}
+
 						for _, host := range hosts {
 							traceln("Start update runner request for " + host + ".")
-							httpSendUpdateRunner(host, c.String("file"))
+							httpSendUpdateRunner(host, file)
 						}
 					case "conf":
 						hosts := strings.Split(c.String("hosts"), ",")

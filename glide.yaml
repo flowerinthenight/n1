@@ -1,4 +1,4 @@
 package: flowerinthenight/n1
 import:
 - package: github.com/urfave/cli
-  version: ^1.18.1
+  version: ~1.19.1
