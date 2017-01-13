@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -190,6 +191,49 @@ func httpSendUpdateService(host string, file string, reboot bool) error {
 	traceln(status)
 	traceln(string(body))
 	return nil
+}
+
+func shouldUpdateRunner(host, runner string) bool {
+	// Read current runner version.
+	err := httpSendExecCmd(host,
+		`c:\runner\gitlab-ci-multi-runner-windows-amd64.exe -v`,
+		os.TempDir()+`\gv.txt`,
+		false,
+		true,
+		10000)
+
+	if err != nil {
+		traceln(err)
+		return false
+	}
+
+	hostver, err := ioutil.ReadFile(os.TempDir() + `\gv.txt`)
+	if err != nil {
+		traceln(err)
+		return false
+	}
+
+	fnExtractVer := func(input []byte) string {
+		re := regexp.MustCompile(`Version:\s+\d+\.\d+\.\d+`)
+		hv := re.Find(hostver)
+		hvs := strings.Split(string(hv), " ")
+		hvval := strings.TrimSpace(hvs[len(hvs)-1])
+		return string(hvval)
+	}
+
+	// Get version of the newly downloaded runner.
+	cmd := exec.Command(runner, "-v")
+	con, err := cmd.Output()
+	oldv := fnExtractVer(hostver)
+	newv := fnExtractVer(con)
+	traceln("Current runner version:", oldv)
+	traceln("New runner version:", newv)
+	if oldv == newv {
+		traceln(host, "runner is already in the latest version.")
+		return false
+	}
+
+	return true
 }
 
 func httpSendUpdateRunner(host string, file string) error {
@@ -447,7 +491,9 @@ func main() {
 
 						for _, host := range hosts {
 							traceln("Start update runner request for " + host + ".")
-							httpSendUpdateRunner(host, file)
+							if up := shouldUpdateRunner(host, file); up {
+								httpSendUpdateRunner(host, file)
+							}
 						}
 					case "conf":
 						hosts := strings.Split(c.String("hosts"), ",")
